@@ -12,9 +12,13 @@ import (
 )
 
 const (
-	observabilityComponentName      = "github.com/ssvlabs/ssv/eth/executionclient"
-	observabilityComponentNamespace = "ssv.el"
+	observabilityName      = "github.com/ssvlabs/ssv/eth/executionclient"
+	observabilityNamespace = "ssv.el"
 )
+
+func metricName(name string) string {
+	return fmt.Sprintf("%s.%s", observabilityNamespace, name)
+}
 
 type executionClientStatus string
 
@@ -25,10 +29,10 @@ const (
 )
 
 var (
-	meter = otel.Meter(observabilityComponentName)
+	meter = otel.Meter(observabilityName)
 
 	latencyHistogram = observability.NewMetric(
-		fmt.Sprintf("%s.latency.duration", observabilityComponentNamespace),
+		metricName("latency.duration"),
 		func(metricName string) (metric.Float64Histogram, error) {
 			return meter.Float64Histogram(
 				metricName,
@@ -40,7 +44,7 @@ var (
 	)
 
 	syncingDistanceGauge = observability.NewMetric(
-		fmt.Sprintf("%s.syncing.distance", observabilityComponentNamespace),
+		metricName("syncing.distance"),
 		func(metricName string) (metric.Int64Gauge, error) {
 			return meter.Int64Gauge(
 				metricName,
@@ -50,7 +54,7 @@ var (
 	)
 
 	clientStatusGauge = observability.NewMetric(
-		fmt.Sprintf("%s.syncing.status", observabilityComponentNamespace),
+		metricName("syncing.status"),
 		func(metricName string) (metric.Int64Gauge, error) {
 			return meter.Int64Gauge(
 				metricName,
@@ -59,7 +63,7 @@ var (
 	)
 
 	lastProcessedBlockGauge = observability.NewMetric(
-		fmt.Sprintf("%s.syncing.last_processed_block", observabilityComponentNamespace),
+		metricName("syncing.last_processed_block"),
 		func(metricName string) (metric.Int64Gauge, error) {
 			return meter.Int64Gauge(
 				metricName,
@@ -69,30 +73,20 @@ var (
 	)
 )
 
-func executionClientAddrAttribute(value string) attribute.KeyValue {
-	eventNameAttrName := fmt.Sprintf("%s.addr", observabilityComponentNamespace)
-	return attribute.String(eventNameAttrName, value)
-}
-
-func executionClientStatusAttribute(value executionClientStatus) attribute.KeyValue {
-	eventNameAttrName := fmt.Sprintf("%s.status", observabilityComponentNamespace)
-	return attribute.String(eventNameAttrName, string(value))
-}
-
 func recordExecutionClientStatus(ctx context.Context, status executionClientStatus, nodeAddr string) {
 	resetExecutionClientStatusGauge(ctx, nodeAddr)
 
 	clientStatusGauge.Record(ctx, 1,
-		metric.WithAttributes(executionClientAddrAttribute(nodeAddr)),
-		metric.WithAttributes(executionClientStatusAttribute(status)),
+		metric.WithAttributes(attribute.String(metricName("addr"), nodeAddr)),
+		metric.WithAttributes(attribute.String(metricName("status"), string(status))),
 	)
 }
 
 func resetExecutionClientStatusGauge(ctx context.Context, nodeAddr string) {
 	for _, status := range []executionClientStatus{statusReady, statusSyncing, statusFailure} {
 		clientStatusGauge.Record(ctx, 0,
-			metric.WithAttributes(executionClientAddrAttribute(nodeAddr)),
-			metric.WithAttributes(executionClientStatusAttribute(status)),
+			metric.WithAttributes(attribute.String(metricName("addr"), nodeAddr)),
+			metric.WithAttributes(attribute.String(metricName("status"), string(status))),
 		)
 	}
 }
