@@ -32,44 +32,35 @@ var (
 	meter = otel.Meter(observabilityName)
 
 	latencyHistogram = observability.NewMetric(
-		metricName("latency.duration"),
-		func(metricName string) (metric.Float64Histogram, error) {
-			return meter.Float64Histogram(
-				metricName,
-				metric.WithUnit("s"),
-				metric.WithDescription("execution client latency in seconds"),
-				metric.WithExplicitBucketBoundaries(observability.SecondsHistogramBuckets...),
-			)
-		},
+		meter.Float64Histogram(
+			metricName("latency.duration"),
+			metric.WithUnit("s"),
+			metric.WithDescription("execution client latency in seconds"),
+			metric.WithExplicitBucketBoundaries(observability.SecondsHistogramBuckets...),
+		),
 	)
 
 	syncingDistanceGauge = observability.NewMetric(
-		metricName("syncing.distance"),
-		func(metricName string) (metric.Int64Gauge, error) {
-			return meter.Int64Gauge(
-				metricName,
-				metric.WithUnit("{block}"),
-				metric.WithDescription("execution client syncing distance which is a delta between highest and current blocks"))
-		},
+		meter.Int64Gauge(
+			metricName("syncing.distance"),
+			metric.WithUnit("{block}"),
+			metric.WithDescription("execution client syncing distance which is a delta between highest and current blocks"),
+		),
 	)
 
 	clientStatusGauge = observability.NewMetric(
-		metricName("syncing.status"),
-		func(metricName string) (metric.Int64Gauge, error) {
-			return meter.Int64Gauge(
-				metricName,
-				metric.WithDescription("execution client syncing status"))
-		},
+		meter.Int64Gauge(
+			metricName("syncing.status"),
+			metric.WithDescription("execution client syncing status"),
+		),
 	)
 
 	lastProcessedBlockGauge = observability.NewMetric(
-		metricName("syncing.last_processed_block"),
-		func(metricName string) (metric.Int64Gauge, error) {
-			return meter.Int64Gauge(
-				metricName,
-				metric.WithUnit("{block_number}"),
-				metric.WithDescription("last processed block by execution client"))
-		},
+		meter.Int64Gauge(
+			metricName("syncing.last_processed_block"),
+			metric.WithUnit("{block_number}"),
+			metric.WithDescription("last processed block by execution client"),
+		),
 	)
 )
 
