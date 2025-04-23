@@ -10,9 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/stretchr/testify/assert"
@@ -35,14 +33,15 @@ type SSVSignerClientSuite struct {
 func (s *SSVSignerClientSuite) SetupTest() {
 	var err error
 	s.logger, err = zap.NewDevelopment()
-	s.Require().NoError(err, "Failed to create logger")
+	s.Require().NoError(err, "failed to create logger")
 
 	s.mux = http.NewServeMux()
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.serverHits++
 		s.mux.ServeHTTP(w, r)
 	}))
-	s.client = NewClient(s.server.URL, WithLogger(s.logger))
+	s.client, err = NewClient(s.server.URL, WithLogger(s.logger))
+	s.Require().NoError(err, "failed to create client")
 }
 
 func (s *SSVSignerClientSuite) TearDownTest() {
@@ -59,11 +58,11 @@ func (s *SSVSignerClientSuite) resetMux() {
 // assertErrorResult asserts that the error matches expectations.
 func (s *SSVSignerClientSuite) assertErrorResult(err error, expectError bool, t *testing.T) {
 	if expectError {
-		require.Error(t, err, "Expected an error")
+		require.Error(t, err)
 	} else {
-		require.NoError(t, err, "Unexpected error")
+		require.NoError(t, err)
 	}
-	assert.Equal(t, 1, s.serverHits, "Expected server to be hit once")
+	assert.Equal(t, 1, s.serverHits)
 }
 
 // writeJSONResponse writes a JSON response with the given status code and data.
@@ -703,12 +702,14 @@ func (s *SSVSignerClientSuite) TestNew() {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			client := NewClient(tc.baseURL)
+			client, err := NewClient(tc.baseURL)
+			require.NoError(t, err)
 			assert.Equal(t, tc.expectedBaseURL, client.baseURL)
 			assert.NotNil(t, client.httpClient)
 
 			logger, _ := zap.NewDevelopment()
-			clientWithLogger := NewClient(tc.baseURL, WithLogger(logger))
+			clientWithLogger, err := NewClient(tc.baseURL, WithLogger(logger))
+			require.NoError(t, err)
 			assert.Equal(t, tc.expectedBaseURL, clientWithLogger.baseURL)
 			assert.Equal(t, logger, clientWithLogger.logger)
 		})
@@ -720,22 +721,28 @@ func TestSSVSignerClientSuite(t *testing.T) {
 }
 
 func TestCustomHTTPClient(t *testing.T) {
+	t.Parallel()
+
 	customClient := &http.Client{
 		Transport: &http.Transport{
 			MaxIdleConns: 100,
 		},
 	}
 
-	withCustomClient := func(client *Client) {
+	withCustomClient := func(client *Client) error {
 		client.httpClient = customClient
+		return nil
 	}
 
-	c := NewClient("http://example.com", withCustomClient)
-
+	logger, _ := zap.NewDevelopment()
+	c, err := NewClient("http://example.com", WithLogger(logger), withCustomClient)
+	require.NoError(t, err)
 	assert.Equal(t, customClient, c.httpClient)
 }
 
 func TestRequestErrors(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hijacker, ok := w.(http.Hijacker)
 		if !ok {
@@ -752,9 +759,10 @@ func TestRequestErrors(t *testing.T) {
 	defer server.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClient(server.URL, WithLogger(logger))
+	client, err := NewClient(server.URL, WithLogger(logger))
+	require.NoError(t, err)
 
-	err := client.AddValidators(context.Background(), ShareKeys{
+	err = client.AddValidators(context.Background(), ShareKeys{
 		EncryptedPrivKey: []byte("test"),
 		PubKey:           phase0.BLSPubKey{1, 1, 1},
 	})
@@ -774,6 +782,8 @@ func TestRequestErrors(t *testing.T) {
 }
 
 func TestResponseHandlingErrors(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -782,9 +792,10 @@ func TestResponseHandlingErrors(t *testing.T) {
 	defer server.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClient(server.URL, WithLogger(logger))
+	client, err := NewClient(server.URL, WithLogger(logger))
+	require.NoError(t, err)
 
-	err := client.AddValidators(context.Background(), ShareKeys{
+	err = client.AddValidators(context.Background(), ShareKeys{
 		EncryptedPrivKey: []byte("test"),
 		PubKey:           phase0.BLSPubKey{1, 1, 1},
 	})
@@ -795,55 +806,87 @@ func TestResponseHandlingErrors(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	t.Parallel()
+
+	logger, zapErr := zap.NewDevelopment()
+	require.NoError(t, zapErr)
 
 	testCases := []struct {
-		name    string
-		baseURL string
-		opts    []ClientOption
+		name            string
+		baseURL         string
+		opts            []ClientOption
+		expectedBaseURL string
+		checkLogger     bool
+		expectedLogger  *zap.Logger
 	}{
 		{
-			name:    "WithoutOptions",
-			baseURL: "http://localhost:9000",
-			opts:    nil,
+			name:            "NormalURL",
+			baseURL:         "http://example.com",
+			opts:            nil,
+			expectedBaseURL: "http://example.com",
 		},
 		{
-			name:    "WithLogger",
-			baseURL: "http://localhost:9000",
-			opts:    []ClientOption{WithLogger(logger)},
+			name:            "URLWithTrailingSlash",
+			baseURL:         "http://example.com/",
+			expectedBaseURL: "http://example.com",
 		},
 		{
-			name:    "WithTrailingSlash",
-			baseURL: "http://localhost:9000/",
-			opts:    []ClientOption{WithLogger(logger)},
+			name:            "Empty",
+			baseURL:         "",
+			expectedBaseURL: "",
+		},
+		{
+			name:            "WithLogger",
+			baseURL:         "http://localhost:9000",
+			opts:            []ClientOption{WithLogger(logger)},
+			expectedBaseURL: "http://localhost:9000",
+			checkLogger:     true,
+			expectedLogger:  logger,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			client := NewClient(tc.baseURL, tc.opts...)
+			t.Parallel()
 
-			expectedBaseURL := strings.TrimRight(tc.baseURL, "/")
-			assert.Equal(t, expectedBaseURL, client.baseURL)
+			client, err := NewClient(tc.baseURL, tc.opts...)
+			require.NoError(t, err)
+			require.NotNil(t, client)
 
-			if len(tc.opts) > 0 {
-				assert.NotNil(t, client.logger)
+			assert.Equal(t, tc.expectedBaseURL, client.baseURL)
+
+			if tc.checkLogger && tc.expectedLogger != nil {
+				assert.Equal(t, tc.expectedLogger, client.logger)
 			} else {
-				assert.Nil(t, client.logger)
+				assert.NotNil(t, client.logger) // default noop logger
 			}
 
 			assert.NotNil(t, client.httpClient)
-			assert.Equal(t, 30*time.Second, client.httpClient.Timeout)
+			assert.Equal(t, DefaultRequestTimeout, client.httpClient.Timeout)
 		})
 	}
 }
 
 func Test_ShareDecryptionError(t *testing.T) {
+	t.Parallel()
+
 	var customErr error = ShareDecryptionError(errors.New("test error"))
 
 	var shareDecryptionError ShareDecryptionError
 	if !errors.As(customErr, &shareDecryptionError) {
 		t.Errorf("shareDecryptionError was expected to be a ShareDecryptionError")
 	}
+}
+
+func TestNewClient_TrimsTrailingSlashFromURL(t *testing.T) {
+	t.Parallel()
+
+	const inputURL = "https://test.example.com/"
+	const expectedURL = "https://test.example.com"
+
+	client, err := NewClient(inputURL)
+
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	assert.Equal(t, expectedURL, client.baseURL)
 }

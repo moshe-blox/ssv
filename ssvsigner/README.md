@@ -5,8 +5,10 @@
 SSV Remote Signer is a service that separates the key management functions from the SSV node.
 
 The service consists of two main components:
+
 1. **Web3Signer** - A third-party service that provides secure key management and slashing protection
-2. **SSV-Signer** - A lightweight service that connects SSV nodes to Web3Signer; it can also be used as a library for local signing
+2. **SSV-Signer** - A lightweight service that connects SSV nodes to Web3Signer; it can also be used as a library for
+   local signing
 
 For more detailed technical overview, check [design documentation](./DESIGN.md).
 
@@ -32,9 +34,10 @@ docker run -e POSTGRES_PASSWORD=password -e POSTGRES_USER=postgres -e POSTGRES_D
 ```
 
 - Apply `web3signer` migrations to the DB
-  - Download and unpack `web3signer` from https://github.com/Consensys/web3signer/releases
-  - Apply all migrations from V1 to V12 in `web3signer`'s `migrations/postgresql` folder maintaining their order and replacing `V1_initial.sql` with the migration name
-  - It may be done using `psql` or `flyway`
+    - Download and unpack `web3signer` from https://github.com/Consensys/web3signer/releases
+    - Apply all migrations from V1 to V12 in `web3signer`'s `migrations/postgresql` folder maintaining their order and
+      replacing `V1_initial.sql` with the migration name
+    - It may be done using `psql` or `flyway`
 
 PSQL example:
 
@@ -55,9 +58,10 @@ Consensys tutorial: https://docs.web3signer.consensys.io/get-started/start-web3s
 
 #### Short summary
 
-- Run `web3signer` with the arguments in the example. You might need to change HTTP port, Ethereum network, PostgreSQL address
-  - Either download and unpack `web3signer` from https://github.com/Consensys/web3signer/releases
-  - Or use `web3signer` Docker image
+- Run `web3signer` with the arguments in the example. You might need to change HTTP port, Ethereum network, PostgreSQL
+  address
+    - Either download and unpack `web3signer` from https://github.com/Consensys/web3signer/releases
+    - Or use `web3signer` Docker image
 
 Docker example:
 
@@ -84,23 +88,47 @@ web3signer --http-listen-port=9000 \
   --key-manager-api-enabled=true
 ```
 
+For TLS-enabled Web3Signer:
+
+```bash
+web3signer --http-listen-port=9000 \
+  eth2 \
+  --network=mainnet \
+  --slashing-protection-db-url="jdbc:postgresql://${POSTGRES_HOST}/web3signer" \
+  --slashing-protection-db-username=postgres \
+  --slashing-protection-db-password=password \
+  --key-manager-api-enabled=true \
+  --tls-keystore-file=/path/to/keystore.p12 \
+  --tls-keystore-password-file=/path/to/password.txt \
+  --tls-known-clients-file=/path/to/knownClients.txt
+```
+
+This configures Web3Signer to accept secure connections from SSV-Signer. When TLS is enabled on Web3Signer, make sure
+to:
+
+1. Use `https://` in the `WEB3SIGNER_ENDPOINT` value for SSV-Signer
+2. Configure client TLS options for SSV-Signer to connect securely
+
 #### Important Web3Signer Options:
 
-| Option | Description |
-|--------|-------------|
-| `--http-listen-port` | The port Web3Signer listens on (default: 9000) |
-| `--network` | The Ethereum network (mainnet, goerli, holesky, etc.) |
-| `--slashing-protection-db-url` | JDBC connection string to PostgreSQL |
-| `--slashing-protection-db-username` | Database username |
-| `--slashing-protection-db-password` | Database password |
-| `--key-manager-api-enabled` | Enables the Key Manager API (required for SSV-Signer) |
+| Option                              | Description                                           |
+|-------------------------------------|-------------------------------------------------------|
+| `--http-listen-port`                | The port Web3Signer listens on (default: 9000)        |
+| `--network`                         | The Ethereum network (mainnet, goerli, holesky, etc.) |
+| `--slashing-protection-db-url`      | JDBC connection string to PostgreSQL                  |
+| `--slashing-protection-db-username` | Database username                                     |
+| `--slashing-protection-db-password` | Database password                                     |
+| `--key-manager-api-enabled`         | Enables the Key Manager API (required for SSV-Signer) |
+| `--tls-keystore-file`               | PKCS12 keystore file for server TLS                   |
+| `--tls-keystore-password-file`      | File containing the keystore password                 |
+| `--tls-known-clients-file`          | File with trusted client certificate fingerprints     |
 
 ### 3. Run SSV-Signer
 
 - Run `./cmd/ssv-signer` passing the following arguments:
-  - `LISTEN_ADDR` - address to listen on (`:8080` by default)
-  - `WEB3SIGNER_ENDPOINT` - `web3signer`'s address from the previous step 
-  - `PRIVATE_KEY_FILE` and `PASSWORD_FILE` - operator private key or path to operator keystore and password files
+    - `LISTEN_ADDR` - address to listen on (`:8080` by default)
+    - `WEB3SIGNER_ENDPOINT` - `web3signer`'s address from the previous step
+    - `PRIVATE_KEY_FILE` and `PASSWORD_FILE` - operator private key or path to operator keystore and password files
 
 Using environment variables with a keystore file:
 
@@ -114,12 +142,21 @@ WEB3SIGNER_ENDPOINT=http://localhost:9000 \
 
 #### SSV-Signer Configuration Options:
 
-| Option              | Environment Variable  | Required | Default | Description                                  |
-|---------------------|-----------------------|----------|---------|----------------------------------------------|
-| Listen Address      | `LISTEN_ADDR`         | Yes      | `:8080` | Address and port for the signer to listen on |
-| Web3Signer Endpoint | `WEB3SIGNER_ENDPOINT` | Yes      | -       | URL of the Web3Signer service                |
-| Private Key File    | `PRIVATE_KEY_FILE`    | Yes      | -       | Path to operator's keystore file             |
-| Password File       | `PASSWORD_FILE`       | Yes      | -       | Path to file containing keystore password    |
+| Option                        | Environment Variable            | Required | Default | Description                                         |
+|-------------------------------|---------------------------------|----------|---------|-----------------------------------------------------|
+| Listen Address                | `LISTEN_ADDR`                   | Yes      | `:8080` | Address and port for the signer to listen on        |
+| Web3Signer Endpoint           | `WEB3SIGNER_ENDPOINT`           | Yes      | -       | URL of the Web3Signer service                       |
+| Private Key File              | `PRIVATE_KEY_FILE`              | Yes*     | -       | Path to operator's keystore file                    |
+| Password File                 | `PASSWORD_FILE`                 | Yes*     | -       | Path to file containing keystore password           |
+| Private Key                   | `PRIVATE_KEY`                   | Yes*     | -       | Operator's private key (alternative to keystore)    |
+| Server Keystore File          | `SERVER_KEYSTORE_FILE`          | No       | -       | PKCS12 keystore for server TLS                      |
+| Server Keystore Password File | `SERVER_KEYSTORE_PASSWORD_FILE` | No       | -       | Password file for server keystore                   |
+| Server Known Clients File     | `SERVER_KNOWN_CLIENTS_FILE`     | No       | -       | Trusted client fingerprints for client auth         |
+| Client Keystore File          | `CLIENT_KEYSTORE_FILE`          | No       | -       | PKCS12 keystore for client TLS                      |
+| Client Keystore Password File | `CLIENT_KEYSTORE_PASSWORD_FILE` | No       | -       | Password file for client keystore                   |
+| Client Known Servers File     | `CLIENT_KNOWN_SERVERS_FILE`     | No       | -       | Trusted server fingerprints for server verification |
+
+\* Either `PRIVATE_KEY` or both `PRIVATE_KEY_FILE` and `PASSWORD_FILE` are required
 
 ### 4. Configure SSV Node to Use Remote Signer
 
@@ -130,18 +167,190 @@ Update your SSV node configuration to use the remote signer:
 SSV_SIGNER_ENDPOINT=http://ssv-signer-address:8080 ./ssv-node
 ```
 
+### 5. Configure TLS for SSV-Signer
+
+SSV-Signer supports TLS to secure connections in two ways:
+
+1. **Server TLS** - Secures incoming connections to SSV-Signer from SSV nodes
+2. **Client TLS** - Secures outgoing connections from SSV-Signer to Web3Signer
+
+The TLS implementation is designed to match Web3Signer's TLS approach exactly, ensuring compatibility and simplifying
+configuration for users who are already familiar with Web3Signer.
+
+#### Using PKCS12 Keystores
+
+SSV-Signer uses PKCS12 keystores for certificates, matching Web3Signer's approach. A PKCS12 keystore (.p12 file)
+contains both the certificate and its private key.
+
+To generate a PKCS12 keystore:
+
+```bash
+# Generate private key and certificate
+openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out cert.pem
+
+# Create PKCS12 keystore from the key and certificate
+openssl pkcs12 -export -out keystore.p12 -inkey key.pem -in cert.pem -name "tls-key"
+```
+
+You'll be prompted to enter a password for the keystore. Save this password as you'll need it for configuration.
+
+#### Known Clients/Servers Authentication
+
+TLS authentication in SSV-Signer is based on certificate fingerprints, matching Web3Signer's approach. This method (
+sometimes called "certificate pinning") verifies the identity of clients/servers by comparing their certificate
+fingerprints with expected values.
+
+The known clients/servers files have the following formats:
+
+**Known Clients File Format:**
+
+```
+# Format: <common_name> <sha256-fingerprint>
+client1 DF:65:B8:02:08:5E:91:82:0F:91:F5:1C:96:56:92:C4:1A:F6:C6:27:FD:6C:FC:31:F2:BB:90:17:22:59:5B:50
+client2 AB:CD:EF:12:34:56:78:90:AB:CD:EF:12:34:56:78:90:AB:CD:EF:12:34:56:78:90:AB:CD:EF:12:34:56:78:90
+```
+
+**Known Servers File Format:**
+
+```
+# Format: <hostname>:<port> <sha256-fingerprint>
+localhost:9000 6C:B2:3E:F9:88:43:5E:62:69:9F:A9:9D:41:14:03:BA:83:24:AC:04:CE:BD:92:49:1B:8D:B2:A4:86:39:4C:BB
+web3signer.example.com:9000 6C:B2:3E:F9:88:43:5E:62:69:9F:A9:9D:41:14:03:BA:83:24:AC:04:CE:BD:92:49:1B:8D:B2:A4:86:39:4C:BB
+```
+
+To get a certificate's fingerprint:
+
+```bash
+# For PEM certificates
+openssl x509 -in cert.pem -fingerprint -sha256 -noout
+
+# For PKCS12 keystores
+keytool -list -v -keystore keystore.p12 -storetype PKCS12
+```
+
+#### Server TLS Configuration (SSV-Signer accepting connections)
+
+To configure SSV-Signer to use TLS for incoming connections:
+
+```bash
+PRIVATE_KEY=OPERATOR_PRIVATE_KEY \
+LISTEN_ADDR=0.0.0.0:8443 \
+WEB3SIGNER_ENDPOINT=http://localhost:9000 \
+SERVER_KEYSTORE_FILE=/path/to/server.p12 \
+SERVER_KEYSTORE_PASSWORD_FILE=/path/to/server_password.txt \
+SERVER_KNOWN_CLIENTS_FILE=/path/to/known_clients.txt \
+./ssv-signer
+```
+
+This is equivalent to Web3Signer's:
+
+```bash
+--tls-keystore-file=/path/to/keystore.p12 \
+--tls-keystore-password-file=/path/to/password.txt \
+--tls-known-clients-file=/path/to/knownClients.txt
+```
+
+#### Client TLS Configuration (SSV-Signer connecting to Web3Signer)
+
+To configure SSV-Signer to use TLS when connecting to Web3Signer:
+
+```bash
+PRIVATE_KEY=OPERATOR_PRIVATE_KEY \
+LISTEN_ADDR=0.0.0.0:8080 \
+WEB3SIGNER_ENDPOINT=https://localhost:9000 \
+CLIENT_KEYSTORE_FILE=/path/to/client.p12 \
+CLIENT_KEYSTORE_PASSWORD_FILE=/path/to/client_password.txt \
+CLIENT_KNOWN_SERVERS_FILE=/path/to/known_servers.txt \
+./ssv-signer
+```
+
+This corresponds to Web3Signer's downstream TLS configuration.
+
+#### Full Mutual TLS Example
+
+A complete setup with both server and client TLS would look like:
+
+```bash
+PRIVATE_KEY=OPERATOR_PRIVATE_KEY \
+LISTEN_ADDR=0.0.0.0:8443 \
+WEB3SIGNER_ENDPOINT=https://localhost:9000 \
+# Server TLS (accepting connections)
+SERVER_KEYSTORE_FILE=/path/to/server.p12 \
+SERVER_KEYSTORE_PASSWORD_FILE=/path/to/server_password.txt \
+SERVER_KNOWN_CLIENTS_FILE=/path/to/known_clients.txt \
+# Client TLS (connecting to Web3Signer)
+CLIENT_KEYSTORE_FILE=/path/to/client.p12 \
+CLIENT_KEYSTORE_PASSWORD_FILE=/path/to/client_password.txt \
+CLIENT_KNOWN_SERVERS_FILE=/path/to/known_servers.txt \
+./ssv-signer
+```
+
+#### Command Line Options Reference
+
+| SSV-Signer Option               | Description                                          | Web3Signer Equivalent                          |
+|---------------------------------|------------------------------------------------------|------------------------------------------------|
+| `SERVER_KEYSTORE_FILE`          | Server PKCS12 keystore file                          | `--tls-keystore-file`                          |
+| `SERVER_KEYSTORE_PASSWORD_FILE` | Path to file containing password for server keystore | `--tls-keystore-password-file`                 |
+| `SERVER_KNOWN_CLIENTS_FILE`     | Known clients fingerprints file                      | `--tls-known-clients-file`                     |
+| `CLIENT_KEYSTORE_FILE`          | Client PKCS12 keystore file                          | `--downstream-http-tls-keystore-file`          |
+| `CLIENT_KEYSTORE_PASSWORD_FILE` | Path to file containing password for client keystore | `--downstream-http-tls-keystore-password-file` |
+| `CLIENT_KNOWN_SERVERS_FILE`     | Known servers fingerprints file                      | `--downstream-http-tls-known-servers-file`     |
+
+#### Security Recommendations
+
+1. **TLS 1.3 Required**: SSV-Signer enforces TLS 1.3 as the minimum version for all TLS connections, providing better
+   security and performance than older versions
+2. **Certificate Fingerprint Verification**: The implementation uses certificate fingerprints for authentication,
+   preventing MITM attacks without requiring a trusted CA hierarchy
+3. **Rotate certificates regularly**: Update your certificates and fingerprints periodically (recommended every 6-12
+   months)
+4. **Use strong credentials**: Generate keystores with strong passwords and use secure password files with appropriate
+   permissions
+
+#### TLS Configuration Options and Validation Rules
+
+SSV-Signer supports various TLS configuration combinations for both server and client connections. Understanding these
+options helps ensure secure and proper setup.
+
+**Server TLS Validation Rules** (SSV-Signer accepting connections):
+
+| Configuration | SERVER_KEYSTORE_FILE | SERVER_KEYSTORE_PASSWORD_FILE | SERVER_KNOWN_CLIENTS_FILE | Validity  | Description                                                    |
+|---------------|----------------------|-------------------------------|---------------------------|-----------|----------------------------------------------------------------|
+| No TLS        | ❌                    | ❌                             | ❌                         | ✅ Valid   | No TLS encryption for incoming connections                     |
+| Basic TLS     | ✅                    | ✅                             | ❌                         | ✅ Valid   | Server presents certificate but doesn't verify clients         |
+| Mutual TLS    | ✅                    | ✅                             | ✅                         | ✅ Valid   | Server verifies client certificates against known fingerprints |
+| Invalid       | ✅                    | ❌                             | ❌                         | ❌ Invalid | Missing keystore password file                                 |
+| Invalid       | ❌                    | ❌                             | ✅                         | ❌ Invalid | Client verification without server certificate                 |
+
+**Client TLS Validation Rules** (SSV-Signer connecting to Web3Signer):
+
+| Configuration      | CLIENT_KEYSTORE_FILE | CLIENT_KEYSTORE_PASSWORD_FILE | CLIENT_KNOWN_SERVERS_FILE | Validity  | Description                                                |
+|--------------------|----------------------|-------------------------------|---------------------------|-----------|------------------------------------------------------------|
+| No TLS             | ❌                    | ❌                             | ❌                         | ✅ Valid   | No TLS for outgoing connections (use HTTP endpoint)        |
+| Fingerprint Only   | ❌                    | ❌                             | ✅                         | ✅ Valid   | Verify server certificate against known fingerprints       |
+| Client Certificate | ✅                    | ✅                             | ❌                         | ✅ Valid   | Present client certificate for mutual TLS                  |
+| Full Mutual TLS    | ✅                    | ✅                             | ✅                         | ✅ Valid   | Present client certificate and verify server (most secure) |
+| Invalid            | ✅                    | ❌                             | ❌                         | ❌ Invalid | Missing keystore password file                             |
+
+When implementing TLS, consider:
+
+- For production environments, use Full Mutual TLS configuration for maximum security
+- The server always requires both keystore and password file if TLS is enabled
+- Client side can use fingerprint verification without presenting a certificate
+- TLS 1.3 is enforced as the minimum protocol version for all TLS connections
+
 ## API Endpoints
 
 SSV-Signer exposes the following API endpoints:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v1/validators` | GET | List all validators (shares) registered with the signer |
-| `/v1/validators` | POST | Add validator shares to the signer |
-| `/v1/validators` | DELETE | Remove validator shares from the signer |
-| `/v1/validators/sign/{identifier}` | POST | Sign a payload with a specific validator share |
-| `/v1/operator/identity` | GET | Get the operator's public key |
-| `/v1/operator/sign` | POST | Sign data with the operator's key |
+| Endpoint                           | Method | Description                                             |
+|------------------------------------|--------|---------------------------------------------------------|
+| `/v1/validators`                   | GET    | List all validators (shares) registered with the signer |
+| `/v1/validators`                   | POST   | Add validator shares to the signer                      |
+| `/v1/validators`                   | DELETE | Remove validator shares from the signer                 |
+| `/v1/validators/sign/{identifier}` | POST   | Sign a payload with a specific validator share          |
+| `/v1/operator/identity`            | GET    | Get the operator's public key                           |
+| `/v1/operator/sign`                | POST   | Sign data with the operator's key                       |
 
 ## Common Issues and Troubleshooting
 
@@ -161,7 +370,8 @@ SSV-Signer exposes the following API endpoints:
 ### Key Management Issues
 
 **Problem**: Already existing keys after restart
-**Solution**: The SSV node syncs validator shares to the signer during the first start. If restarting from a new clean database, cleaning keys in Web3Signer is required to ensure all shares are properly registered.
+**Solution**: The SSV node syncs validator shares to the signer during the first start. If restarting from a new clean
+database, cleaning keys in Web3Signer is required to ensure all shares are properly registered.
 
 ## Security Considerations
 
@@ -171,9 +381,11 @@ SSV-Signer exposes the following API endpoints:
 
 ## Performance Considerations
 
-1. **Resource Requirements**: Web3Signer may require significant resources for large validator sets. If Web3Signer has a large number of keys, it requires very long time to initialize. 
+1. **Resource Requirements**: Web3Signer may require significant resources for large validator sets. If Web3Signer has a
+   large number of keys, it requires very long time to initialize.
 2. **Latency**: Keep the SSV-Signer and Web3Signer services close to the SSV node to minimize signing latency.
-3. **Database Performance**: For operators with many validators, ensure the PostgreSQL database is properly sized and optimized.
+3. **Database Performance**: For operators with many validators, ensure the PostgreSQL database is properly sized and
+   optimized.
 
 ## Migration Guide
 
@@ -186,7 +398,8 @@ When migrating from local signing to remote signing:
 
 ## Limitations
 
-1. The remote signer doesn't automatically sync all validator shares on startup. It receives shares as the node processes events.
+1. The remote signer doesn't automatically sync all validator shares on startup. It receives shares as the node
+   processes events.
 2. Changing operators with an existing database is not supported.
 3. Web3Signer is a third-party component with its own limitations and dependencies.
 

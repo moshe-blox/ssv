@@ -2,6 +2,7 @@ package web3signer
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net/http"
 	"strings"
@@ -26,29 +27,25 @@ type Web3Signer struct {
 	httpClient *http.Client
 }
 
-func New(baseURL string, opts ...Option) *Web3Signer {
+// New creates a new Web3Signer client with the given base URL and optional configuration.
+func New(baseURL string, opts ...Option) (*Web3Signer, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	w3s := &Web3Signer{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: DefaultRequestTimeout,
+			Transport: http.DefaultTransport,
+			Timeout:   DefaultRequestTimeout,
 		},
 	}
 
 	for _, opt := range opts {
-		opt(w3s)
+		if err := opt(w3s); err != nil {
+			return nil, err
+		}
 	}
 
-	return w3s
-}
-
-type Option func(*Web3Signer)
-
-func WithRequestTimeout(timeout time.Duration) Option {
-	return func(w3s *Web3Signer) {
-		w3s.httpClient.Timeout = timeout
-	}
+	return w3s, nil
 }
 
 type ListKeysResponse []phase0.BLSPubKey
@@ -159,4 +156,19 @@ func (w3s *Web3Signer) handleWeb3SignerErr(err error) error {
 	}
 
 	return HTTPResponseError{Err: err, Status: http.StatusInternalServerError}
+}
+
+// applyTLSConfig clones the existing transport and applies the TLS configuration to the HTTP client.
+func (w3s *Web3Signer) applyTLSConfig(tlsConfig *tls.Config) error {
+	var transport *http.Transport
+	if t, ok := w3s.httpClient.Transport.(*http.Transport); ok {
+		transport = t.Clone()
+	} else {
+		transport = http.DefaultTransport.(*http.Transport).Clone()
+	}
+
+	transport.TLSClientConfig = tlsConfig
+	w3s.httpClient.Transport = transport
+
+	return nil
 }

@@ -3,6 +3,7 @@ package ssvsigner
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/carlmjohnson/requests"
 	"go.uber.org/zap"
+
+	ssvsignertls "github.com/ssvlabs/ssv/ssvsigner/tls"
 
 	"github.com/ssvlabs/ssv/logging/fields"
 
@@ -26,35 +29,64 @@ type Client struct {
 	httpClient *http.Client
 }
 
-func NewClient(baseURL string, opts ...ClientOption) *Client {
+// ClientOption is used to handle client options.
+type ClientOption func(*Client) error
+
+// WithLogger sets a custom logger for the client.
+func WithLogger(logger *zap.Logger) ClientOption {
+	return func(c *Client) error {
+		c.logger = logger
+
+		return nil
+	}
+}
+
+// WithTLS configures TLS for the client.
+// This method sets up the client with TLS using the provided certificate and trusted fingerprints.
+//
+// Parameters:
+//   - certificate: client certificate for mutual TLS authentication
+//     (optional, can be empty if the server doesn't require client authentication)
+//   - trustedFingerprints: map of hostname:port strings to SHA-256 certificate fingerprints
+//     (optional, can be nil if certificate pinning is not required)
+//
+// Returns a ClientOption that configures the client with TLS.
+func WithTLS(certificate tls.Certificate, trustedFingerprints map[string]string) ClientOption {
+	return func(client *Client) error {
+		tlsConfig, err := ssvsignertls.LoadClientConfig(certificate, trustedFingerprints)
+		if err != nil {
+			return fmt.Errorf("ssvsigner TLS: %w", err)
+		}
+
+		return client.applyTLSConfig(tlsConfig)
+	}
+}
+
+func NewClient(baseURL string, opts ...ClientOption) (*Client, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	c := &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: DefaultRequestTimeout,
+			Transport: http.DefaultTransport,
+			Timeout:   DefaultRequestTimeout,
 		},
 		logger: zap.NewNop(),
 	}
 
 	for _, opt := range opts {
-		opt(c)
+		if err := opt(c); err != nil {
+			return nil, err
+		}
 	}
 
-	return c
-}
-
-type ClientOption func(*Client)
-
-func WithLogger(logger *zap.Logger) ClientOption {
-	return func(client *Client) {
-		client.logger = logger
-	}
+	return c, nil
 }
 
 func WithRequestTimeout(timeout time.Duration) ClientOption {
-	return func(client *Client) {
+	return func(client *Client) error {
 		client.httpClient.Timeout = timeout
+		return nil
 	}
 }
 
@@ -148,7 +180,6 @@ func (c *Client) RemoveValidators(ctx context.Context, pubKeys ...phase0.BLSPubK
 		Delete().
 		ToJSON(&resp).
 		Fetch(ctx)
-
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
@@ -203,7 +234,6 @@ func (c *Client) OperatorIdentity(ctx context.Context) (pubKeyBase64 string, err
 		Path(pathOperatorIdentity).
 		ToString(&resp).
 		Fetch(ctx)
-
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
@@ -227,7 +257,6 @@ func (c *Client) OperatorSign(ctx context.Context, payload []byte) (signature []
 		Post().
 		ToBytesBuffer(&respBuf).
 		Fetch(ctx)
-
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -254,4 +283,20 @@ func (c *Client) MissingKeys(ctx context.Context, localKeys []phase0.BLSPubKey) 
 	}
 
 	return missing, nil
+}
+
+// applyTLSConfig applies the given TLS configuration to the HTTP client.
+// This method ensures that the HTTP client's transport is properly configured for TLS communication.
+func (c *Client) applyTLSConfig(tlsConfig *tls.Config) error {
+	var transport *http.Transport
+	if t, ok := c.httpClient.Transport.(*http.Transport); ok {
+		transport = t.Clone()
+	} else {
+		transport = http.DefaultTransport.(*http.Transport).Clone()
+	}
+
+	transport.TLSClientConfig = tlsConfig
+	c.httpClient.Transport = transport
+
+	return nil
 }
